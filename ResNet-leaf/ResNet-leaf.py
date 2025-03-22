@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+import torchvision
 from sklearn.model_selection import train_test_split
 from torch import nn
 from torch.nn import functional as F
@@ -9,6 +10,7 @@ import os
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 from PIL import Image
+from Dataset import LeafDataset  # 导入 LeafDataset 类
 
 ##读取数据
 train_data = pd.read_csv('classify-leaves/train.csv')
@@ -20,10 +22,10 @@ print(test_data.shape)
 # 按照8:2的比例划分为训练集和验证集
 train_set, val_set = train_test_split(train_data, test_size=0.2, random_state=42)
 
-# 打印划分后的数据集形状
-print("训练集形状:", train_set.shape)
-print("验证集形状:", val_set.shape)
-print(train_set.head())
+# # 打印划分后的数据集形状
+# print("训练集形状:", train_set.shape)
+# print("验证集形状:", val_set.shape)
+# print(train_set.head())
 
 
 ## 数据预处理
@@ -34,61 +36,31 @@ unique_labels = np.sort(unique_labels)
 label_to_index = {label: index for index, label in enumerate(unique_labels)}
 index_to_label = {index: label for label, index in label_to_index.items()}
 
-# 自定义 Dataset 类
-# 自定义 Dataset 类
-class LeafDataset(Dataset):
-
-    def __init__(self, csv_data, root_dir, transform=None, label_to_index=None):
-        self.csv_data = csv_data
-        self.root_dir = root_dir
-        self.transform = transform
-        self.label_to_index = label_to_index
-
-    def __getitem__(self, idx):
-        # 获取图片名称
-        img_name = self.csv_data.iloc[idx, 0]
-        img_path = os.path.join(self.root_dir, img_name)
-        # 打开图片
-        image = Image.open(img_path)
-        if self.transform:
-            image = self.transform(image)
-
-        if 'label' in self.csv_data.columns:
-            # 获取标签
-            label_str = self.csv_data.iloc[idx, 1]
-            # 将字符串标签转换为整数索引
-            label = self.label_to_index[label_str]
-            # 将整数索引转换为张量
-            label = torch.tensor(label, dtype=torch.long)
-            return image, label
-        else:
-            return image, img_name
-
-    def __len__(self):
-        return len(self.csv_data)
-
-
+# 对训练集进行图像翻转，测试集不用
+train_augs = torchvision.transforms.Compose([
+     torchvision.transforms.RandomVerticalFlip(),
+     torchvision.transforms.ToTensor()])
 trans = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 
 # 图片所在的根目录
 root_dir = "classify-leaves"
 
-train_dataset = LeafDataset(train_set, root_dir, trans, label_to_index)
+train_dataset = LeafDataset(train_set, root_dir, train_augs, label_to_index)
 val_dataset = LeafDataset(val_set, root_dir, trans, label_to_index)
 test_dataset = LeafDataset(test_data, root_dir, trans, label_to_index)
 
 # 创建 DataLoader 对象
-batch_size = 64
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+batch_size = 256
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=d2l.get_dataloader_workers())
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=d2l.get_dataloader_workers())
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=d2l.get_dataloader_workers())
 
 
-# 遍历 DataLoader 获取第一批数据
-for images, labels in train_loader:
-    print(images.size())
-    print(labels)
-    break
+# # 遍历 DataLoader 获取第一批数据
+# for images, labels in train_loader:
+#     print(images.size())
+#     print(labels)
+#     break
 
 
 ##构建ResNet模型
@@ -147,7 +119,7 @@ net = nn.Sequential(b1, b2, b3, b4, b5,
 
 
 
-lr, num_epochs = 0.01, 10
+lr, num_epochs = 0.01, 5
 d2l.train_ch6(net, train_loader, val_loader, num_epochs, lr, d2l.try_gpu())
 
 # 保存模型状态字典
@@ -182,5 +154,5 @@ result_df = pd.DataFrame({
     'image': image_names,
     'label': predictions
 })
-result_df.to_csv('测试结果.csv', index=False)
+result_df.to_csv('测试结果2.csv', index=False)
 
